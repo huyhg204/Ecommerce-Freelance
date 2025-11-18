@@ -1,47 +1,98 @@
-import React, { useState } from 'react'
-import { Link } from 'react-router-dom'
+import React, { useState, useEffect } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
+import { ClipLoader } from 'react-spinners'
 import { FaTimes, FaChevronUp, FaChevronDown } from 'react-icons/fa'
 import { formatCurrency } from '../utils/formatCurrency'
-
-const initialCartItems = [
-  {
-    id: 1,
-    name: 'Màn hình LCD',
-    image: 'https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?auto=format&fit=crop&w=200&q=80',
-    price: 650,
-    quantity: 1,
-  },
-  {
-    id: 2,
-    name: 'Tay cầm H1',
-    image: 'https://images.unsplash.com/photo-1614680376573-e720cdb88866?auto=format&fit=crop&w=200&q=80',
-    price: 550,
-    quantity: 2,
-  },
-]
+import { axiosInstance } from '../utils/axiosConfig'
+import { authService } from '../utils/authService'
 
 const Carts = () => {
-  const [cartItems, setCartItems] = useState(initialCartItems)
+  const navigate = useNavigate();
+  const [cartItems, setCartItems] = useState([])
   const [couponCode, setCouponCode] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
-  const updateQuantity = (id, newQuantity) => {
+  const fetchCart = async () => {
+    if (!authService.isAuthenticated()) {
+      navigate('/login')
+      return
+    }
+    
+    try {
+      setLoading(true)
+      const response = await axiosInstance.get('/cart')
+      if (response.data.status === 'success' && response.data.data?.cart) {
+        setCartItems(response.data.data.cart)
+      } else {
+        setCartItems([])
+      }
+    } catch (error) {
+      setError('Không thể tải giỏ hàng. Vui lòng thử lại sau.')
+      setCartItems([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const updateQuantity = async (productId, newQuantity) => {
     if (newQuantity < 1) return
-    setCartItems(
-      cartItems.map((item) => (item.id === id ? { ...item, quantity: newQuantity } : item))
-    )
+    
+    try {
+      await axiosInstance.post('/cart/add', {
+        product_id: productId,
+        quantity: newQuantity,
+      })
+      // Cập nhật local state
+      setCartItems(
+        cartItems.map((item) => 
+          item.product_id === productId
+            ? { ...item, quantity_item: newQuantity, total_item: item.price_product * newQuantity }
+            : item
+        )
+      )
+    } catch (error) {
+      toast.error('Không thể cập nhật số lượng', {
+        description: 'Vui lòng thử lại sau.',
+      })
+    }
   }
 
-  const removeItem = (id) => {
-    setCartItems(cartItems.filter((item) => item.id !== id))
+  const removeItem = async (productId) => {
+    try {
+      await axiosInstance.post('/cart/remove', {
+        product_id: productId,
+      })
+      setCartItems(cartItems.filter((item) => item.product_id !== productId))
+    } catch (error) {
+      toast.error('Không thể xóa sản phẩm', {
+        description: 'Vui lòng thử lại sau.',
+      })
+    }
   }
 
-  const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
+  // Lấy giỏ hàng từ API
+  useEffect(() => {
+    fetchCart()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const subtotal = cartItems.reduce((sum, item) => {
+    return sum + (item.price_product * item.quantity_item)
+  }, 0)
   const shipping = 0 // Free shipping
   const total = subtotal + shipping
 
   const handleApplyCoupon = () => {
+    if (!couponCode.trim()) {
+      toast.error('Vui lòng nhập mã giảm giá')
+      return
+    }
     // Logic apply coupon
-    alert('Mã giảm giá đã được áp dụng!')
+    toast.success('Mã giảm giá đã được áp dụng!', {
+      description: `Mã ${couponCode} đã được áp dụng thành công.`,
+    })
   }
 
   return (
@@ -62,100 +113,304 @@ const Carts = () => {
       {/* Cart Content */}
       <section className="section">
         <div className="container">
-          <div className="cart_wrapper">
+          <h2 style={{ fontSize: '2.4rem', marginBottom: '30px', fontWeight: 'bold' }}>
+            Giỏ hàng của bạn
+          </h2>
+          
+          {error && (
+            <div style={{ 
+              color: '#d32f2f', 
+              marginBottom: '20px', 
+              padding: '15px 20px', 
+              backgroundColor: '#ffebee', 
+              border: '1px solid #ef5350',
+              borderRadius: '8px',
+              fontSize: '1.4rem'
+            }}>
+              <strong>⚠️ Lỗi:</strong> {error}
+            </div>
+          )}
+          
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: '1fr 400px', 
+            gap: '30px'
+          }}>
             {/* Left Column - Product List */}
-            <div className="cart_products">
-              <div className="cart_table">
-                <div className="cart_table_header">
-                  <div className="cart_table_col cart_table_col--product">Sản phẩm</div>
-                  <div className="cart_table_col cart_table_col--price">Giá</div>
-                  <div className="cart_table_col cart_table_col--quantity">Số lượng</div>
-                  <div className="cart_table_col cart_table_col--subtotal">Tổng tiền</div>
+            <div>
+              <div style={{
+                backgroundColor: '#fff',
+                borderRadius: '8px',
+                border: '1px solid #e0e0e0',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                overflow: 'hidden'
+              }}>
+                {/* Table Header */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '2fr 1fr 1fr 1fr',
+                  backgroundColor: '#f5f5f5',
+                  padding: '15px 20px',
+                  borderBottom: '1px solid #e0e0e0',
+                  fontWeight: 'bold',
+                  fontSize: '1.4rem'
+                }}>
+                  <div>Sản phẩm</div>
+                  <div style={{ textAlign: 'right' }}>Giá</div>
+                  <div style={{ textAlign: 'center' }}>Số lượng</div>
+                  <div style={{ textAlign: 'right' }}>Tổng tiền</div>
                 </div>
 
-                <div className="cart_table_body">
-                  {cartItems.length === 0 ? (
-                    <div className="cart_empty">
-                      <p>Giỏ hàng của bạn đang trống</p>
-                      <Link to="/" className="cart_empty_link">
+                {/* Table Body */}
+                <div>
+                  {loading ? (
+                    <div style={{ 
+                      display: 'flex', 
+                      flexDirection: 'column',
+                      justifyContent: 'center', 
+                      alignItems: 'center', 
+                      minHeight: '300px',
+                      padding: '40px 0',
+                      gap: '15px'
+                    }}>
+                      <ClipLoader color="#1976d2" size={40} />
+                      <p style={{ fontSize: '1.4rem', color: '#666', marginTop: '10px' }}>
+                        Đang tải giỏ hàng...
+                      </p>
+                    </div>
+                  ) : !Array.isArray(cartItems) || cartItems.length === 0 ? (
+                    <div style={{ 
+                      textAlign: 'center', 
+                      padding: '60px 20px',
+                      fontSize: '1.6rem',
+                      color: '#666'
+                    }}>
+                      <p style={{ marginBottom: '20px' }}>Giỏ hàng của bạn đang trống</p>
+                      <Link 
+                        to="/" 
+                        style={{
+                          display: 'inline-block',
+                          padding: '12px 24px',
+                          backgroundColor: '#1976d2',
+                          color: 'white',
+                          borderRadius: '5px',
+                          textDecoration: 'none',
+                          fontSize: '1.4rem'
+                        }}
+                      >
                         Tiếp tục mua sắm
                       </Link>
                     </div>
                   ) : (
-                    cartItems.map((item) => (
-                      <div key={item.id} className="cart_table_row">
-                        <div className="cart_table_col cart_table_col--product">
-                          <button
-                            className="cart_remove_btn"
-                            onClick={() => removeItem(item.id)}
-                            aria-label="Xóa sản phẩm"
-                          >
-                            <FaTimes />
-                          </button>
-                          <img src={item.image} alt={item.name} className="cart_product_img" />
-                          <span className="cart_product_name">{item.name}</span>
-                        </div>
-                        <div className="cart_table_col cart_table_col--price">
-                          {formatCurrency(item.price)}
-                        </div>
-                        <div className="cart_table_col cart_table_col--quantity">
-                          <div className="quantity_control">
+                    cartItems.map((item, index) => {
+                      const productId = item.product_id
+                      const productName = item.name_product
+                      const productImage = item.image_product
+                      const productPrice = item.price_product
+                      const quantity = item.quantity_item
+                      
+                      return (
+                        <div 
+                          key={productId}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: '2fr 1fr 1fr 1fr',
+                            padding: '20px',
+                            borderBottom: index < cartItems.length - 1 ? '1px solid #e0e0e0' : 'none',
+                            alignItems: 'center'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                             <button
-                              className="quantity_btn"
-                              onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                              aria-label="Giảm số lượng"
+                              onClick={() => removeItem(productId)}
+                              aria-label="Xóa sản phẩm"
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#d32f2f',
+                                cursor: 'pointer',
+                                fontSize: '1.6rem',
+                                padding: '5px',
+                                display: 'flex',
+                                alignItems: 'center'
+                              }}
                             >
-                              <FaChevronDown />
+                              <FaTimes />
                             </button>
-                            <input
-                              type="number"
-                              className="quantity_input"
-                              value={item.quantity}
-                              onChange={(e) =>
-                                updateQuantity(item.id, parseInt(e.target.value) || 1)
-                              }
-                              min="1"
-                            />
-                            <button
-                              className="quantity_btn"
-                              onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                              aria-label="Tăng số lượng"
-                            >
-                              <FaChevronUp />
-                            </button>
+                            {productImage ? (
+                              <img 
+                                src={productImage} 
+                                alt={productName}
+                                style={{
+                                  width: '80px',
+                                  height: '80px',
+                                  objectFit: 'cover',
+                                  borderRadius: '5px'
+                                }}
+                              />
+                            ) : (
+                              <div style={{ 
+                                width: '80px',
+                                height: '80px',
+                                backgroundColor: '#f0f0f0',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                borderRadius: '5px',
+                                fontSize: '1.2rem',
+                                color: '#999'
+                              }}>
+                                No Image
+                              </div>
+                            )}
+                            <span style={{ fontSize: '1.4rem', fontWeight: '500' }}>{productName}</span>
+                          </div>
+                          <div style={{ textAlign: 'right', fontSize: '1.4rem' }}>
+                            {formatCurrency(productPrice)}
+                          </div>
+                          <div style={{ textAlign: 'center' }}>
+                            <div style={{ 
+                              display: 'inline-flex', 
+                              alignItems: 'center',
+                              border: '1px solid #e0e0e0',
+                              borderRadius: '5px',
+                              overflow: 'hidden'
+                            }}>
+                              <button
+                                onClick={() => updateQuantity(productId, quantity - 1)}
+                                aria-label="Giảm số lượng"
+                                style={{
+                                  padding: '8px 12px',
+                                  border: 'none',
+                                  backgroundColor: '#f5f5f5',
+                                  cursor: 'pointer',
+                                  fontSize: '1.2rem',
+                                  display: 'flex',
+                                  alignItems: 'center'
+                                }}
+                              >
+                                <FaChevronDown />
+                              </button>
+                              <input
+                                type="number"
+                                value={quantity}
+                                onChange={(e) =>
+                                  updateQuantity(productId, parseInt(e.target.value) || 1)
+                                }
+                                min="1"
+                                style={{
+                                  width: '50px',
+                                  padding: '8px',
+                                  border: 'none',
+                                  textAlign: 'center',
+                                  fontSize: '1.4rem',
+                                  outline: 'none'
+                                }}
+                              />
+                              <button
+                                onClick={() => updateQuantity(productId, quantity + 1)}
+                                aria-label="Tăng số lượng"
+                                style={{
+                                  padding: '8px 12px',
+                                  border: 'none',
+                                  backgroundColor: '#f5f5f5',
+                                  cursor: 'pointer',
+                                  fontSize: '1.2rem',
+                                  display: 'flex',
+                                  alignItems: 'center'
+                                }}
+                              >
+                                <FaChevronUp />
+                              </button>
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'right', fontSize: '1.5rem', fontWeight: 'bold', color: '#1976d2' }}>
+                            {formatCurrency(productPrice * quantity)}
                           </div>
                         </div>
-                        <div className="cart_table_col cart_table_col--subtotal">
-                          {formatCurrency(item.price * item.quantity)}
-                        </div>
-                      </div>
-                    ))
+                      )
+                    })
                   )}
                 </div>
               </div>
 
               {/* Action Buttons */}
-              <div className="cart_actions">
-                <Link to="/" className="cart_action_btn cart_action_btn--secondary">
+              <div style={{ 
+                display: 'flex', 
+                gap: '15px', 
+                marginTop: '20px',
+                marginBottom: '20px'
+              }}>
+                <Link 
+                  to="/" 
+                  style={{
+                    padding: '12px 24px',
+                    backgroundColor: '#fff',
+                    color: '#1976d2',
+                    border: '1px solid #1976d2',
+                    borderRadius: '5px',
+                    textDecoration: 'none',
+                    fontSize: '1.4rem',
+                    fontWeight: '500'
+                  }}
+                >
                   Quay lại cửa hàng
                 </Link>
-                <button className="cart_action_btn cart_action_btn--secondary">
+                <button 
+                  onClick={fetchCart}
+                  style={{
+                    padding: '12px 24px',
+                    backgroundColor: '#fff',
+                    color: '#1976d2',
+                    border: '1px solid #1976d2',
+                    borderRadius: '5px',
+                    fontSize: '1.4rem',
+                    fontWeight: '500',
+                    cursor: 'pointer'
+                  }}
+                >
                   Cập nhật giỏ hàng
                 </button>
               </div>
 
               {/* Coupon Section */}
-              <div className="cart_coupon">
-                <h3 className="cart_coupon_title">Mã giảm giá</h3>
-                <div className="cart_coupon_form">
+              <div style={{
+                backgroundColor: '#f9f9f9',
+                padding: '20px',
+                borderRadius: '8px',
+                border: '1px solid #e0e0e0'
+              }}>
+                <h3 style={{ fontSize: '1.6rem', marginBottom: '15px', fontWeight: 'bold' }}>
+                  Mã giảm giá
+                </h3>
+                <div style={{ display: 'flex', gap: '10px' }}>
                   <input
                     type="text"
-                    className="cart_coupon_input"
                     placeholder="Nhập mã giảm giá"
                     value={couponCode}
                     onChange={(e) => setCouponCode(e.target.value)}
+                    style={{
+                      flex: 1,
+                      padding: '12px 15px',
+                      fontSize: '1.4rem',
+                      border: '1px solid #e0e0e0',
+                      borderRadius: '5px',
+                      outline: 'none'
+                    }}
                   />
-                  <button className="cart_coupon_btn" onClick={handleApplyCoupon}>
+                  <button 
+                    onClick={handleApplyCoupon}
+                    style={{
+                      padding: '12px 20px',
+                      fontSize: '1.4rem',
+                      backgroundColor: '#1976d2',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '5px',
+                      cursor: 'pointer',
+                      fontWeight: '500'
+                    }}
+                  >
                     Áp dụng mã
                   </button>
                 </div>
@@ -163,23 +418,68 @@ const Carts = () => {
             </div>
 
             {/* Right Column - Cart Total */}
-            <div className="cart_total">
-              <h3 className="cart_total_title">Tổng giỏ hàng</h3>
-              <div className="cart_total_content">
-                <div className="cart_total_row">
-                  <span className="cart_total_label">Tạm tính:</span>
-                  <span className="cart_total_value">{formatCurrency(subtotal)}</span>
+            <div style={{
+              backgroundColor: '#fff',
+              padding: '30px',
+              borderRadius: '8px',
+              border: '1px solid #e0e0e0',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+              height: 'fit-content',
+              position: 'sticky',
+              top: '20px'
+            }}>
+              <h3 style={{ fontSize: '2rem', marginBottom: '25px', fontWeight: 'bold' }}>
+                Tổng giỏ hàng
+              </h3>
+              <div style={{ marginBottom: '25px' }}>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  marginBottom: '15px',
+                  fontSize: '1.4rem'
+                }}>
+                  <span>Tạm tính:</span>
+                  <span>{formatCurrency(subtotal)}</span>
                 </div>
-                <div className="cart_total_row">
-                  <span className="cart_total_label">Phí vận chuyển:</span>
-                  <span className="cart_total_value">Miễn phí</span>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  marginBottom: '15px',
+                  fontSize: '1.4rem'
+                }}>
+                  <span>Phí vận chuyển:</span>
+                  <span style={{ color: '#28a745' }}>Miễn phí</span>
                 </div>
-                <div className="cart_total_row cart_total_row--total">
-                  <span className="cart_total_label">Tổng cộng:</span>
-                  <span className="cart_total_value">{formatCurrency(total)}</span>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between',
+                  paddingTop: '15px',
+                  borderTop: '2px solid #e0e0e0',
+                  fontSize: '1.8rem',
+                  fontWeight: 'bold'
+                }}>
+                  <span>Tổng cộng:</span>
+                  <span style={{ color: '#1976d2' }}>{formatCurrency(total)}</span>
                 </div>
               </div>
-              <Link to="/checkout" className="cart_checkout_btn">
+              <Link 
+                to="/checkout" 
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  padding: '15px',
+                  backgroundColor: '#1976d2',
+                  color: 'white',
+                  textAlign: 'center',
+                  borderRadius: '5px',
+                  textDecoration: 'none',
+                  fontSize: '1.6rem',
+                  fontWeight: 'bold',
+                  transition: 'background-color 0.3s'
+                }}
+                onMouseEnter={(e) => e.target.style.backgroundColor = '#1565c0'}
+                onMouseLeave={(e) => e.target.style.backgroundColor = '#1976d2'}
+              >
                 Thanh toán
               </Link>
             </div>

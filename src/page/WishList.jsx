@@ -1,90 +1,115 @@
-import React, { useState } from 'react'
-import { Link } from 'react-router-dom'
+import React, { useState, useEffect } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
+import { ClipLoader } from 'react-spinners'
 import { FaTrash, FaEye, FaHeart, FaShoppingCart, FaStar } from 'react-icons/fa'
 import { formatCurrency } from '../utils/formatCurrency'
-
-const wishlistProducts = [
-  {
-    id: 1,
-    title: 'Túi duffle Gucci',
-    price: 960,
-    originalPrice: 1160,
-    discount: '-35%',
-    image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    id: 2,
-    title: 'Tản nhiệt CPU RGB',
-    price: 1960,
-    image: 'https://images.unsplash.com/photo-1591488320449-011701bb6704?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    id: 3,
-    title: 'Tay cầm Gaming GP11',
-    price: 550,
-    image: 'https://images.unsplash.com/photo-1593642632823-8f785ba67e45?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    id: 4,
-    title: 'Áo khoác Satin',
-    price: 750,
-    image: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=600&q=80',
-  },
-]
-
-const justForYouProducts = [
-  {
-    id: 5,
-    title: 'Laptop Gaming ASUS FHD',
-    price: 960,
-    originalPrice: 1160,
-    discount: '-35%',
-    image: 'https://images.unsplash.com/photo-1510511459019-5dda7724fd87?auto=format&fit=crop&w=600&q=80',
-    rating: 5,
-    reviews: 65,
-  },
-  {
-    id: 6,
-    title: 'Màn hình Gaming IPS LCD',
-    price: 1160,
-    image: 'https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?auto=format&fit=crop&w=600&q=80',
-    rating: 5,
-    reviews: 65,
-  },
-  {
-    id: 7,
-    title: 'Tay cầm Gaming HAVIT HV-G92',
-    price: 560,
-    image: 'https://images.unsplash.com/photo-1614680376573-e720cdb88866?auto=format&fit=crop&w=600&q=80',
-    badge: 'Mới',
-    rating: 5,
-    reviews: 65,
-  },
-  {
-    id: 8,
-    title: 'Bàn phím cơ AK-900',
-    price: 200,
-    image: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=600&q=80',
-    rating: 5,
-    reviews: 65,
-  },
-]
+import { axiosInstance } from '../utils/axiosConfig'
+import { cartService } from '../utils/cartService'
+import { authService } from '../utils/authService'
 
 const WishList = () => {
-  const [wishlistItems, setWishlistItems] = useState(wishlistProducts)
+  const navigate = useNavigate()
+  const [wishlistItems, setWishlistItems] = useState([])
+  const [justForYouProducts, setJustForYouProducts] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
-  const handleRemoveFromWishlist = (id) => {
-    setWishlistItems(wishlistItems.filter((item) => item.id !== id))
+  useEffect(() => {
+    if (!authService.isAuthenticated()) {
+      navigate('/login')
+      return
+    }
+    fetchWishlist()
+    fetchJustForYou()
+  }, [navigate])
+
+  const fetchWishlist = async () => {
+    try {
+      setLoading(true)
+      // Nếu có API wishlist, sử dụng: const response = await axiosInstance.get('/wishlist')
+      // Hiện tại không có API wishlist, để trống
+      setWishlistItems([])
+    } catch (error) {
+      console.error('Lỗi khi lấy wishlist:', error)
+      setError('Không thể tải danh sách yêu thích. Vui lòng thử lại sau.')
+      setWishlistItems([])
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const handleMoveAllToBag = () => {
-    // Logic to move all items to cart
-    alert('Tất cả sản phẩm đã được thêm vào giỏ hàng!')
+  const fetchJustForYou = async () => {
+    try {
+      const response = await axiosInstance.get('/products')
+      if (response.data.status === 'success') {
+        const data = response.data.data
+        const productsList = Array.isArray(data) ? data : (data?.products || [])
+        setJustForYouProducts(productsList.slice(0, 4).map(product => ({
+          id: product.id,
+          title: product.name_product,
+          price: product.price_product || 0,
+          image: product.image_product || '',
+          rating: product.rating || 4.0,
+          reviews: product.reviews_count || 0,
+          discount: product.discount || '',
+        })))
+      } else {
+        setJustForYouProducts([])
+      }
+    } catch (error) {
+      console.error('Lỗi khi lấy sản phẩm:', error)
+      setJustForYouProducts([])
+    }
   }
 
-  const handleAddToCart = (product) => {
-    // Logic to add product to cart
-    alert(`${product.title} đã được thêm vào giỏ hàng!`)
+  const handleRemoveFromWishlist = async (id) => {
+    try {
+      // Nếu có API wishlist: await axiosInstance.post('/wishlist/remove', { product_id: id })
+      setWishlistItems(wishlistItems.filter((item) => item.id !== id))
+    } catch (error) {
+      toast.error('Không thể xóa sản phẩm', {
+        description: 'Vui lòng thử lại sau.',
+      })
+    }
+  }
+
+  const handleMoveAllToBag = async () => {
+    if (!authService.isAuthenticated()) {
+      navigate('/login')
+      return
+    }
+
+    try {
+      for (const item of wishlistItems) {
+        await cartService.addToCart(item.id, 1)
+      }
+      toast.success('Đã thêm tất cả vào giỏ hàng!', {
+        description: `${wishlistItems.length} sản phẩm đã được thêm vào giỏ hàng.`,
+      })
+    } catch (error) {
+      toast.error('Không thể thêm tất cả vào giỏ hàng', {
+        description: 'Vui lòng thử lại sau.',
+      })
+    }
+  }
+
+  const handleAddToCart = async (product) => {
+    if (!authService.isAuthenticated()) {
+      navigate('/login')
+      return
+    }
+
+    try {
+      await cartService.addToCart(product.id, 1)
+      toast.success('Đã thêm vào giỏ hàng!', {
+        description: `${product.title || product.name_product} đã được thêm vào giỏ hàng.`,
+      })
+    } catch (error) {
+      toast.error('Không thể thêm vào giỏ hàng', {
+        description: error.message || 'Vui lòng thử lại sau.',
+      })
+    }
   }
 
   return (
@@ -105,6 +130,11 @@ const WishList = () => {
       {/* Wishlist Section */}
       <section className="section">
         <div className="container">
+          {error && (
+            <div style={{ color: 'red', marginBottom: '20px' }}>
+              {error}
+            </div>
+          )}
           <div className="wishlist_header">
             <h2 className="wishlist_title">Danh sách yêu thích ({wishlistItems.length})</h2>
             {wishlistItems.length > 0 && (
@@ -114,7 +144,22 @@ const WishList = () => {
             )}
           </div>
 
-          {wishlistItems.length === 0 ? (
+          {loading ? (
+            <div style={{ 
+              display: 'flex', 
+              flexDirection: 'column',
+              justifyContent: 'center', 
+              alignItems: 'center', 
+              minHeight: '300px',
+              padding: '40px 0',
+              gap: '15px'
+            }}>
+              <ClipLoader color="#1976d2" size={40} />
+              <p style={{ fontSize: '1.4rem', color: '#666' }}>
+                Đang tải danh sách yêu thích...
+              </p>
+            </div>
+          ) : wishlistItems.length === 0 ? (
             <div className="wishlist_empty">
               <FaHeart className="wishlist_empty_icon" />
               <p className="wishlist_empty_text">Danh sách yêu thích của bạn đang trống</p>
@@ -128,7 +173,13 @@ const WishList = () => {
                 <div key={product.id} className="card">
                   <div className="card_top">
                     <Link to={`/products/${product.id}`}>
-                      <img src={product.image} alt={product.title} className="card_img" />
+                      {product.image ? (
+                        <img src={product.image} alt={product.title || product.name_product} className="card_img" />
+                      ) : (
+                        <div className="card_img" style={{ backgroundColor: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '200px' }}>
+                          <span>No Image</span>
+                        </div>
+                      )}
                     </Link>
                     {product.discount && (
                       <div className="card_tag">{product.discount}</div>
@@ -143,10 +194,10 @@ const WishList = () => {
                   </div>
                   <div className="card_body">
                     <Link to={`/products/${product.id}`} className="card_title_link">
-                      <h3 className="card_title">{product.title}</h3>
+                      <h3 className="card_title">{product.title || product.name_product}</h3>
                     </Link>
                     <div className="card_price_wrapper">
-                      <p className="card_price">{formatCurrency(product.price)}</p>
+                      <p className="card_price">{formatCurrency(product.price || product.price_product || 0)}</p>
                       {product.originalPrice && (
                         <p className="card_price_original">
                           {formatCurrency(product.originalPrice)}
@@ -180,60 +231,73 @@ const WishList = () => {
             </Link>
           </div>
 
-          <div className="wishlist_grid">
-            {justForYouProducts.map((product) => (
-              <div key={product.id} className="card">
-                <div className="card_top">
-                  <Link to={`/products/${product.id}`}>
-                    <img src={product.image} alt={product.title} className="card_img" />
-                  </Link>
-                  {product.discount && (
-                    <div className="card_tag">{product.discount}</div>
-                  )}
-                  {product.badge && (
-                    <div className="card_tag card_tag--new">{product.badge}</div>
-                  )}
-                  <div className="card_top_icons">
-                    <button className="card_top_icon_btn" aria-label="Yêu thích">
-                      <FaHeart />
-                    </button>
-                    <Link
-                      to={`/products/${product.id}`}
-                      className="card_top_icon_btn"
-                      aria-label="Xem nhanh"
-                    >
-                      <FaEye />
+          {justForYouProducts.length === 0 ? null : (
+            <div className="wishlist_grid">
+              {justForYouProducts.map((product) => (
+                <div key={product.id} className="card">
+                  <div className="card_top">
+                    <Link to={`/products/${product.id}`}>
+                      {product.image ? (
+                        <img src={product.image} alt={product.title} className="card_img" />
+                      ) : (
+                        <div className="card_img" style={{ backgroundColor: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '200px' }}>
+                          <span>No Image</span>
+                        </div>
+                      )}
                     </Link>
-                  </div>
-                </div>
-                <div className="card_body">
-                  <Link to={`/products/${product.id}`} className="card_title_link">
-                    <h3 className="card_title">{product.title}</h3>
-                  </Link>
-                  <div className="card_price_wrapper">
-                    <p className="card_price">{formatCurrency(product.price)}</p>
-                    {product.originalPrice && (
-                      <p className="card_price_original">
-                        {formatCurrency(product.originalPrice)}
-                      </p>
+                    {product.discount && (
+                      <div className="card_tag">{product.discount}</div>
                     )}
-                  </div>
-                  <div className="card_ratings">
-                    <div className="card_stars">
-                      {Array.from({ length: 5 }).map((_, index) => (
-                        <FaStar
-                          key={index}
-                          className={`w-6 h-6 ${index < product.rating ? 'active' : ''}`}
-                        />
-                      ))}
+                    {product.badge && (
+                      <div className="card_tag card_tag--new">{product.badge}</div>
+                    )}
+                    <div className="card_top_icons">
+                      <button className="card_top_icon_btn" aria-label="Yêu thích">
+                        <FaHeart />
+                      </button>
+                      <Link
+                        to={`/products/${product.id}`}
+                        className="card_top_icon_btn"
+                        aria-label="Xem nhanh"
+                      >
+                        <FaEye />
+                      </Link>
                     </div>
-                    <p className="card_rating_numbers">({product.reviews})</p>
                   </div>
-                  <button className="add_to_cart">Thêm vào giỏ</button>
+                  <div className="card_body">
+                    <Link to={`/products/${product.id}`} className="card_title_link">
+                      <h3 className="card_title">{product.title}</h3>
+                    </Link>
+                    <div className="card_price_wrapper">
+                      <p className="card_price">{formatCurrency(product.price)}</p>
+                      {product.originalPrice && (
+                        <p className="card_price_original">
+                          {formatCurrency(product.originalPrice)}
+                        </p>
+                      )}
+                    </div>
+                    <div className="card_ratings">
+                      <div className="card_stars">
+                        {Array.from({ length: 5 }).map((_, index) => (
+                          <FaStar
+                            key={index}
+                            className={`w-6 h-6 ${index < Math.floor(product.rating) ? 'active' : ''}`}
+                          />
+                        ))}
+                      </div>
+                      <p className="card_rating_numbers">({product.reviews})</p>
+                    </div>
+                    <button 
+                      className="add_to_cart"
+                      onClick={() => handleAddToCart(product)}
+                    >
+                      Thêm vào giỏ
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
     </div>

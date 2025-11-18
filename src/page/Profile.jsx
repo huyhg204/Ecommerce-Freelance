@@ -1,16 +1,57 @@
-import React, { useState } from 'react'
-import { Link } from 'react-router-dom'
+import React, { useState, useEffect } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
+import { ClipLoader } from 'react-spinners'
+import { axiosInstance } from '../utils/axiosConfig'
+import { authService } from '../utils/authService'
 
 const Profile = () => {
+  const navigate = useNavigate()
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
   const [formData, setFormData] = useState({
-    firstName: 'Md',
-    lastName: 'Rimel',
-    email: 'rimell111@gmail.com',
-    address: 'Kingston, 5236, United State',
+    firstName: '',
+    lastName: '',
+    email: '',
+    address: '',
     currentPassword: '',
     newPassword: '',
     confirmPassword: '',
   })
+
+  useEffect(() => {
+    if (!authService.isAuthenticated()) {
+      navigate('/login')
+      return
+    }
+    fetchUser()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const fetchUser = async () => {
+    try {
+      setLoading(true)
+      const response = await axiosInstance.get('/user')
+      if (response.data.status === 'success') {
+        const userData = response.data.data
+        setUser(userData)
+        setFormData({
+          firstName: userData.name?.split(' ')[0] || '',
+          lastName: userData.name?.split(' ').slice(1).join(' ') || '',
+          email: userData.email || '',
+          address: userData.address || '',
+          currentPassword: '',
+          newPassword: '',
+          confirmPassword: '',
+        })
+      }
+    } catch (error) {
+      console.error('Lỗi khi lấy thông tin user:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
 
   const handleInputChange = (e) => {
     const { name, value } = e.target
@@ -20,23 +61,27 @@ const Profile = () => {
     })
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    // Handle form submission
-    alert('Thông tin đã được cập nhật!')
+    // Note: API có thể không có endpoint để update profile
+    // Nếu có, sẽ cần gọi API ở đây
+    toast.info('Thông tin đã được cập nhật!', {
+      description: 'Chức năng này cần API endpoint để update.',
+    })
   }
 
   const handleCancel = () => {
-    // Reset form or navigate away
-    setFormData({
-      firstName: 'Md',
-      lastName: 'Rimel',
-      email: 'rimell111@gmail.com',
-      address: 'Kingston, 5236, United State',
-      currentPassword: '',
-      newPassword: '',
-      confirmPassword: '',
-    })
+    if (user) {
+      setFormData({
+        firstName: user.name?.split(' ')[0] || '',
+        lastName: user.name?.split(' ').slice(1).join(' ') || '',
+        email: user.email || '',
+        address: user.address || '',
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      })
+    }
   }
 
   const menuItems = [
@@ -86,15 +131,6 @@ const Profile = () => {
             </Link>
             <span className="breadcrumb_separator"> / </span>
             <span className="breadcrumb_current">Tài khoản của tôi</span>
-          </div>
-        </div>
-      </section>
-
-      {/* Welcome Message */}
-      <section className="section">
-        <div className="container">
-          <div className="profile_welcome">
-            <h2 className="profile_welcome_title">Xin chào! Md Rimel</h2>
           </div>
         </div>
       </section>
@@ -154,7 +190,23 @@ const Profile = () => {
             {/* Right Main Content */}
             <div className="profile_main">
               <h2 className="profile_main_title">Chỉnh sửa hồ sơ</h2>
-              <form className="profile_form" onSubmit={handleSubmit}>
+              
+              {loading ? (
+                <div style={{ 
+                  display: 'flex', 
+                  flexDirection: 'column',
+                  justifyContent: 'center', 
+                  alignItems: 'center', 
+                  minHeight: '400px',
+                  gap: '15px'
+                }}>
+                  <ClipLoader color="#1976d2" size={50} />
+                  <p style={{ fontSize: '1.4rem', color: '#666' }}>
+                    Đang tải thông tin cá nhân...
+                  </p>
+                </div>
+              ) : (
+                <form className="profile_form" onSubmit={handleSubmit}>
                 {/* First Row */}
                 <div className="profile_form_row">
                   <div className="profile_form_group">
@@ -273,6 +325,7 @@ const Profile = () => {
                   </button>
                 </div>
               </form>
+              )}
             </div>
           </div>
         </div>

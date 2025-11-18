@@ -1,5 +1,7 @@
-import React, { useState } from 'react'
-import { Link } from 'react-router-dom'
+import React, { useState, useEffect } from 'react'
+import { Link, useParams, useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
+import { ClipLoader } from 'react-spinners'
 import { Swiper, SwiperSlide } from 'swiper/react'
 import { Pagination } from 'swiper/modules'
 import 'swiper/css'
@@ -15,13 +17,9 @@ import {
   FaEye,
 } from 'react-icons/fa'
 import { formatCurrency } from '../utils/formatCurrency'
-
-const productImages = [
-  'https://images.unsplash.com/photo-1614680376573-e720cdb88866?auto=format&fit=crop&w=600&q=80', // Gamepad
-  'https://images.unsplash.com/photo-1593642632823-8f785ba67e45?auto=format&fit=crop&w=600&q=80', // Gamepad angle
-  'https://images.unsplash.com/photo-1552820728-8b83bb6b773f?auto=format&fit=crop&w=600&q=80', // Gamepad close
-  'https://images.unsplash.com/photo-1606144042614-b2417e99c4e3?auto=format&fit=crop&w=600&q=80', // Gamepad detail
-]
+import { axiosInstance } from '../utils/axiosConfig'
+import { cartService } from '../utils/cartService'
+import { authService } from '../utils/authService'
 
 const colors = [
   { id: 1, name: 'Xanh dương', value: '#4285F4', selected: true },
@@ -29,48 +27,6 @@ const colors = [
 ]
 
 const sizes = ['XS', 'S', 'M', 'L', 'XL']
-
-const relatedProducts = [
-  {
-    id: 1,
-    title: 'Bàn phím cơ Gaming RGB',
-    price: 120,
-    originalPrice: 160,
-    discount: '-40%',
-    image:
-      'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=600&q=80',
-    reviews: 88,
-  },
-  {
-    id: 2,
-    title: 'Màn hình Gaming 27 inch',
-    price: 960,
-    originalPrice: 1160,
-    discount: '-35%',
-    image:
-      'https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?auto=format&fit=crop&w=600&q=80',
-    reviews: 75,
-  },
-  {
-    id: 3,
-    title: 'Chuột Gaming không dây',
-    price: 370,
-    originalPrice: 400,
-    discount: '-30%',
-    image:
-      'https://images.unsplash.com/photo-1527814050087-3793815479db?auto=format&fit=crop&w=600&q=80',
-    reviews: 99,
-  },
-  {
-    id: 4,
-    title: 'Tai nghe Gaming 7.1',
-    price: 160,
-    originalPrice: 170,
-    image:
-      'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=600&q=80',
-    reviews: 65,
-  },
-]
 
 const comments = [
   {
@@ -100,12 +56,78 @@ const comments = [
 ]
 
 const ProductsDetail = () => {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const [product, setProduct] = useState(null)
+  const [relatedProducts, setRelatedProducts] = useState([])
+  const [loading, setLoading] = useState(true)
   const [selectedImage, setSelectedImage] = useState(0)
-  const [selectedColor, setSelectedColor] = useState(colors[0].id)
+  const [selectedColor, setSelectedColor] = useState(colors[0]?.id || 1)
   const [selectedSize, setSelectedSize] = useState('M')
-  const [quantity, setQuantity] = useState(2)
+  const [quantity, setQuantity] = useState(1)
   const [newComment, setNewComment] = useState({ rating: 5, content: '', user: '' })
   const [productComments, setProductComments] = useState(comments)
+
+  useEffect(() => {
+    if (id) {
+      fetchProduct()
+      fetchRelatedProducts()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
+
+  const fetchProduct = async () => {
+    try {
+      setLoading(true)
+      const response = await axiosInstance.get(`/product/${id}`)
+      if (response.data.status === 'success') {
+        const productData = response.data.data
+        setProduct({
+          id: productData.id,
+          name: productData.name_product,
+          price: productData.price_product || 0,
+          description: productData.description_product || '',
+          image: productData.image_product || '',
+          images: productData.images || [productData.image_product],
+          stock: productData.quantity_product || 0,
+          category: productData.name_category || productData.category,
+        })
+        // Set first image as default
+        if (productData.images && productData.images.length > 0) {
+          setSelectedImage(0)
+        }
+      }
+    } catch (error) {
+      console.error('Lỗi khi lấy chi tiết sản phẩm:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const fetchRelatedProducts = async () => {
+    try {
+      const response = await axiosInstance.get('/products')
+      if (response.data.status === 'success') {
+        const data = response.data.data
+        const productsList = Array.isArray(data) ? data : (data?.products || [])
+        // Lấy 4 sản phẩm khác (loại trừ sản phẩm hiện tại)
+        const related = productsList
+          .filter(p => p.id !== parseInt(id))
+          .slice(0, 4)
+          .map(p => ({
+            id: p.id,
+            title: p.name_product,
+            price: p.price_product || 0,
+            image: p.image_product || '',
+            reviews: p.reviews_count || 0,
+          }))
+        setRelatedProducts(related)
+      }
+    } catch (error) {
+      console.error('Lỗi khi lấy sản phẩm liên quan:', error)
+      setRelatedProducts([])
+    }
+  }
 
   const updateQuantity = (delta) => {
     const newQuantity = quantity + delta
@@ -113,6 +135,56 @@ const ProductsDetail = () => {
       setQuantity(newQuantity)
     }
   }
+
+  const handleAddToCart = async () => {
+    if (!authService.isAuthenticated()) {
+      if (window.confirm('Bạn cần đăng nhập để thêm vào giỏ hàng. Đi đến trang đăng nhập?')) {
+        navigate('/login')
+      }
+      return
+    }
+
+    try {
+      await cartService.addToCart(product.id, quantity)
+      toast.success('Đã thêm vào giỏ hàng!', {
+        description: `Đã thêm ${quantity} sản phẩm vào giỏ hàng.`,
+      })
+    } catch (error) {
+      toast.error('Không thể thêm vào giỏ hàng', {
+        description: error.message || 'Vui lòng thử lại sau.',
+      })
+    }
+  }
+
+  if (!product && !loading) {
+    return (
+      <div>
+        <section className="breadcrumb_section">
+          <div className="container">
+            <nav className="breadcrumb">
+              <Link to="/" className="breadcrumb_link">
+                Trang chủ
+              </Link>
+              <span className="breadcrumb_separator"> / </span>
+              <span className="breadcrumb_current">Sản phẩm</span>
+            </nav>
+          </div>
+        </section>
+        <section className="section">
+          <div className="container">
+            <p>Sản phẩm không tồn tại</p>
+            <Link to="/products">Quay lại danh sách sản phẩm</Link>
+          </div>
+        </section>
+      </div>
+    )
+  }
+
+  const productImages = product && product.images && product.images.length > 0 
+    ? product.images 
+    : product && product.image 
+      ? [product.image] 
+      : ['https://via.placeholder.com/600']
 
   const handleSubmitComment = (e) => {
     e.preventDefault()
@@ -139,11 +211,15 @@ const ProductsDetail = () => {
               Trang chủ
             </Link>
             <span className="breadcrumb_separator"> / </span>
-            <Link to="/categories/gaming" className="breadcrumb_link">
-              Gaming
-            </Link>
-            <span className="breadcrumb_separator"> / </span>
-            <span className="breadcrumb_current">Tay cầm Gaming HAVIT HV-G92</span>
+            {product?.category && (
+              <>
+                <Link to={`/products?category=${encodeURIComponent(product.category?.name || product.category || '')}`} className="breadcrumb_link">
+                  {product.category?.name || product.category || 'Danh mục'}
+                </Link>
+                <span className="breadcrumb_separator"> / </span>
+              </>
+            )}
+            <span className="breadcrumb_current">{product?.name || 'Sản phẩm'}</span>
           </nav>
         </div>
       </section>
@@ -151,32 +227,60 @@ const ProductsDetail = () => {
       {/* Product Detail Section */}
       <section className="section">
         <div className="container">
+          {loading ? (
+            <div style={{ 
+              display: 'flex', 
+              flexDirection: 'column',
+              justifyContent: 'center', 
+              alignItems: 'center', 
+              minHeight: '400px',
+              padding: '40px 0',
+              gap: '15px'
+            }}>
+              <ClipLoader color="#1976d2" size={50} />
+              <p style={{ fontSize: '1.4rem', color: '#666' }}>
+                Đang tải chi tiết sản phẩm...
+              </p>
+            </div>
+          ) : product ? (
           <div className="product_detail_wrapper">
             {/* Left Column - Product Images */}
             <div className="product_detail_images">
               <div className="product_main_image">
-                <img
-                  src={productImages[selectedImage]}
-                  alt="Tay cầm Gaming HAVIT HV-G92"
-                  className="product_main_img"
-                />
+                {productImages[selectedImage] ? (
+                  <img
+                    src={productImages[selectedImage]}
+                    alt={product.name}
+                    className="product_main_img"
+                  />
+                ) : (
+                  <div className="product_main_img" style={{ backgroundColor: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '400px' }}>
+                    <span>No Image</span>
+                  </div>
+                )}
               </div>
-              <div className="product_thumbnails">
-                {productImages.map((img, index) => (
-                  <button
-                    key={index}
-                    className={`product_thumbnail ${selectedImage === index ? 'active' : ''}`}
-                    onClick={() => setSelectedImage(index)}
-                  >
-                    <img src={img} alt={`Thumbnail ${index + 1}`} />
-                  </button>
-                ))}
-              </div>
+              {productImages.length > 1 && (
+                <div className="product_thumbnails">
+                  {productImages.map((img, index) => (
+                    <button
+                      key={index}
+                      className={`product_thumbnail ${selectedImage === index ? 'active' : ''}`}
+                      onClick={() => setSelectedImage(index)}
+                    >
+                      {img ? (
+                        <img src={img} alt={`Thumbnail ${index + 1}`} />
+                      ) : (
+                        <div style={{ width: '100%', height: '100%', backgroundColor: '#f0f0f0' }} />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Right Column - Product Info */}
             <div className="product_detail_info">
-              <h1 className="product_detail_title">Tay cầm Gaming HAVIT HV-G92</h1>
+              <h1 className="product_detail_title">{product.name}</h1>
 
               <div className="product_detail_rating">
                 <div className="product_stars">
@@ -185,14 +289,13 @@ const ProductsDetail = () => {
                   ))}
                 </div>
                 <span className="product_reviews_count">(150 đánh giá)</span>
-                <span className="product_stock">| Còn hàng</span>
+                <span className="product_stock">| {product.stock > 0 ? 'Còn hàng' : 'Hết hàng'}</span>
               </div>
 
-              <div className="product_detail_price">{formatCurrency(192)}</div>
+              <div className="product_detail_price">{formatCurrency(product.price)}</div>
 
               <p className="product_detail_description">
-                PlayStation 5 Controller Skin High quality vinyl with air channel adhesive for easy
-                bubble free install & mess free removal Pressure sensitive.
+                {product.description || 'Không có mô tả cho sản phẩm này.'}
               </p>
 
               <div className="product_detail_divider"></div>
@@ -254,7 +357,9 @@ const ProductsDetail = () => {
                     <FaChevronUp />
                   </button>
                 </div>
-                <button className="product_buy_btn">Mua ngay</button>
+                <button className="product_buy_btn" onClick={handleAddToCart}>
+                  Thêm vào giỏ
+                </button>
                 <button className="product_wishlist_btn" aria-label="Thêm vào yêu thích">
                   <FaHeart />
                 </button>
@@ -283,6 +388,7 @@ const ProductsDetail = () => {
               </div>
             </div>
           </div>
+          ) : null}
         </div>
       </section>
 
@@ -389,26 +495,29 @@ const ProductsDetail = () => {
             }}
             className="mySwiper"
           >
-            {relatedProducts.map((product) => (
-              <SwiperSlide key={product.id}>
+            {relatedProducts.length > 0 ? relatedProducts.map((relatedProduct) => (
+              <SwiperSlide key={relatedProduct.id}>
                 <div className="card">
                   <div className="card_top">
-                    <img src={product.image} alt={product.title} className="card_img" />
-                    {product.discount && <div className="card_tag">{product.discount}</div>}
+                    {relatedProduct.image ? (
+                      <img src={relatedProduct.image} alt={relatedProduct.title} className="card_img" />
+                    ) : (
+                      <div className="card_img" style={{ backgroundColor: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '200px' }}>
+                        <span>No Image</span>
+                      </div>
+                    )}
+                    {relatedProduct.discount && <div className="card_tag">{relatedProduct.discount}</div>}
                     <div className="card_top_icons">
                       <FaHeart className="card_top_icon" />
                       <FaEye className="card_top_icon" />
                     </div>
                   </div>
                   <div className="card_body">
-                    <Link to={`/products/${product.id}`} className="card_title_link">
-                      <h3 className="card_title">{product.title}</h3>
+                    <Link to={`/products/${relatedProduct.id}`} className="card_title_link">
+                      <h3 className="card_title">{relatedProduct.title}</h3>
                     </Link>
                     <div className="card_price_wrapper">
-                      <p className="card_price">{formatCurrency(product.price)}</p>
-                      {product.originalPrice && (
-                        <p className="card_price_original">{formatCurrency(product.originalPrice)}</p>
-                      )}
+                      <p className="card_price">{formatCurrency(relatedProduct.price)}</p>
                     </div>
                     <div className="card_ratings">
                       <div className="card_stars">
@@ -416,13 +525,43 @@ const ProductsDetail = () => {
                           <FaStar key={index} className="w-6 h-6" />
                         ))}
                       </div>
-                      <p className="card_rating_numbers">({product.reviews})</p>
+                      <p className="card_rating_numbers">({relatedProduct.reviews})</p>
                     </div>
-                    <button className="add_to_cart">Thêm vào giỏ</button>
+                    <button 
+                      className="add_to_cart"
+                      onClick={async (e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        
+                        if (!authService.isAuthenticated()) {
+                          if (window.confirm('Bạn cần đăng nhập để thêm vào giỏ hàng. Đi đến trang đăng nhập?')) {
+                            navigate('/login')
+                          }
+                          return
+                        }
+
+                        try {
+                          await cartService.addToCart(relatedProduct.id, 1)
+                          toast.success('Đã thêm vào giỏ hàng!', {
+                            description: `${relatedProduct.name_product} đã được thêm vào giỏ hàng.`,
+                          })
+                        } catch (error) {
+                          toast.error('Không thể thêm vào giỏ hàng', {
+                            description: error.message || 'Vui lòng thử lại sau.',
+                          })
+                        }
+                      }}
+                    >
+                      Thêm vào giỏ
+                    </button>
                   </div>
                 </div>
               </SwiperSlide>
-            ))}
+            )) : (
+              <SwiperSlide>
+                <p>Không có sản phẩm liên quan</p>
+              </SwiperSlide>
+            )}
           </Swiper>
         </div>
       </section>

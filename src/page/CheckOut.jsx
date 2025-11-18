@@ -1,60 +1,224 @@
-import React, { useState } from 'react'
-import { Link } from 'react-router-dom'
+import React, { useState, useEffect, useMemo } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
+import { ClipLoader } from 'react-spinners'
 import { formatCurrency } from '../utils/formatCurrency'
+import { axiosInstance } from '../utils/axiosConfig'
+import { authService } from '../utils/authService'
 
-const orderItems = [
-  {
-    id: 1,
-    name: 'Màn hình LCD',
-    image: 'https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?auto=format&fit=crop&w=200&q=80',
-    price: 650,
-    quantity: 1,
-  },
-  {
-    id: 2,
-    name: 'Tay cầm H1',
-    image: 'https://images.unsplash.com/photo-1614680376573-e720cdb88866?auto=format&fit=crop&w=200&q=80',
-    price: 550,
-    quantity: 2,
-  },
-]
+// Helper function để lấy cart items từ API
+const fetchCartItems = async () => {
+  const response = await axiosInstance.get('/cart')
+  if (response.data.status === 'success' && response.data.data?.cart) {
+    return response.data.data.cart
+  }
+  return []
+}
+
+// Helper function để clear cart trên server
+const clearCartOnServer = async () => {
+  try {
+    const cartItems = await fetchCartItems()
+    await Promise.all(
+      cartItems.map(async (item) => {
+        try {
+          await axiosInstance.post('/cart/remove', { product_id: item.product_id })
+        } catch (error) {
+          console.error(`Lỗi khi xóa item ${item.product_id}:`, error)
+        }
+      })
+    )
+  } catch (error) {
+    console.error('Lỗi khi clear cart:', error)
+  }
+}
+
+// Helper function để xử lý error từ API
+const handleApiError = (error) => {
+  if (error.response?.status === 400 || error.response?.status === 422) {
+    const errorData = error.response.data
+    if (errorData.errors) {
+      // Laravel validation errors format: {errors: {field: [messages]}}
+      return Object.values(errorData.errors).flat().join(', ')
+    }
+    return errorData.message || errorData.error || 'Dữ liệu không hợp lệ. Vui lòng kiểm tra lại.'
+  }
+  return error.response?.data?.message || error.response?.data?.error || 'Đã xảy ra lỗi. Vui lòng thử lại sau.'
+}
 
 const CheckOut = () => {
+  const navigate = useNavigate()
+  const [orderItems, setOrderItems] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
   const [formData, setFormData] = useState({
-    firstName: '',
-    companyName: '',
-    streetAddress: '',
-    apartment: '',
-    townCity: '',
-    phoneNumber: '',
-    emailAddress: '',
-    saveInfo: false,
+    name_customer: '',
+    address_customer: '',
+    phone_customer: '',
+    note: '',
   })
   const [paymentMethod, setPaymentMethod] = useState('cash')
   const [couponCode, setCouponCode] = useState('')
+  const [error, setError] = useState('')
 
-  const handleInputChange = (e) => {
-    const { name, value, type, checked } = e.target
-    setFormData({
-      ...formData,
-      [name]: type === 'checkbox' ? checked : value,
-    })
+  // Lấy giỏ hàng khi component mount
+  useEffect(() => {
+    if (!authService.isAuthenticated()) {
+      navigate('/login')
+      return
+    }
+    // Pre-fill thông tin user nếu có
+    const user = authService.getUser()
+    if (user && user.name) {
+      setFormData(prev => ({
+        ...prev,
+        name_customer: user.name
+      }))
+    }
+    fetchCart()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const fetchCart = async () => {
+    try {
+      setLoading(true)
+      const items = await fetchCartItems()
+      setOrderItems(items)
+    } catch (error) {
+      console.error('Lỗi khi lấy giỏ hàng:', error)
+      setError('Không thể tải giỏ hàng. Vui lòng thử lại sau.')
+      setOrderItems([])
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const handleSubmit = (e) => {
+  const handleInputChange = (e) => {
+    const { name, value } = e.target
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }))
+  }
+
+  const validateForm = () => {
+    if (!formData.name_customer.trim()) {
+      setError('Vui lòng nhập tên khách hàng')
+      return false
+    }
+    if (!formData.address_customer.trim()) {
+      setError('Vui lòng nhập địa chỉ giao hàng')
+      return false
+    }
+    if (!formData.phone_customer.trim()) {
+      setError('Vui lòng nhập số điện thoại')
+      return false
+    }
+    return true
+  }
+
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    // Handle checkout logic
-    alert('Đặt hàng thành công!')
+    setError('')
+
+    // Validation
+    if (!validateForm()) {
+      return
+    }
+
+    // Kiểm tra authentication
+    if (!authService.isAuthenticated()) {
+      setError('Vui lòng đăng nhập để đặt hàng')
+      navigate('/login')
+      return
+    }
+
+    setSubmitting(true)
+
+    try {
+      // Refresh cart trước khi checkout để đảm bảo có dữ liệu mới nhất
+      const currentCartItems = await fetchCartItems()
+
+      if (currentCartItems.length === 0) {
+        setError('Giỏ hàng của bạn đang trống. Vui lòng thêm sản phẩm vào giỏ hàng trước khi đặt hàng.')
+        setSubmitting(false)
+        return
+      }
+
+      setOrderItems(currentCartItems)
+
+      // Chuẩn bị dữ liệu gửi API theo format mới
+      const checkoutData = {
+        name_customer: formData.name_customer,
+        address_customer: formData.address_customer,
+        phone_customer: formData.phone_customer,
+        note: formData.note || '',
+      }
+
+      // Gửi request checkout
+      const response = await axiosInstance.post('/checkout', checkoutData)
+
+      if (response.data.status === 'success') {
+        // Clear form và cart sau khi checkout thành công
+        const user = authService.getUser()
+        setFormData({
+          name_customer: user && user.name ? user.name : '',
+          address_customer: '',
+          phone_customer: '',
+          note: '',
+        })
+        setOrderItems([])
+
+        // Clear cart trên server
+        await clearCartOnServer()
+
+        toast.success('Đặt hàng thành công!', {
+          description: 'Đơn hàng của bạn đã được xử lý thành công.',
+          duration: 3000,
+        })
+        navigate('/')
+      } else {
+        setError(response.data.message || 'Đặt hàng thất bại. Vui lòng thử lại.')
+      }
+    } catch (error) {
+      setError(handleApiError(error))
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const handleApplyCoupon = () => {
+    if (!couponCode.trim()) {
+      toast.error('Vui lòng nhập mã giảm giá')
+      return
+    }
     // Logic apply coupon
-    alert('Mã giảm giá đã được áp dụng!')
+    toast.success('Mã giảm giá đã được áp dụng!', {
+      description: `Mã ${couponCode} đã được áp dụng thành công.`,
+    })
   }
 
-  const subtotal = orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
-  const shipping = 0 // Free shipping
-  const total = subtotal + shipping
+  // Tính toán tổng tiền
+  const { subtotal, total } = useMemo(() => {
+    const sub = orderItems.reduce((sum, item) => {
+      return sum + (item.price_product * item.quantity_item)
+    }, 0)
+    return {
+      subtotal: sub,
+      total: sub, // Free shipping
+    }
+  }, [orderItems])
+
+  // Helper function để lấy thông tin sản phẩm từ item
+  const getProductInfo = (item) => {
+    return {
+      id: item.product_id,
+      name: item.name_product,
+      image: item.image_product,
+      price: item.price_product,
+      quantity: item.quantity_item,
+    }
+  }
 
   return (
     <div>
@@ -64,18 +228,6 @@ const CheckOut = () => {
           <nav className="breadcrumb">
             <Link to="/" className="breadcrumb_link">
               Trang chủ
-            </Link>
-            <span className="breadcrumb_separator"> / </span>
-            <Link to="/account" className="breadcrumb_link">
-              Tài khoản
-            </Link>
-            <span className="breadcrumb_separator"> / </span>
-            <Link to="/account/my-account" className="breadcrumb_link">
-              Tài khoản của tôi
-            </Link>
-            <span className="breadcrumb_separator"> / </span>
-            <Link to="/products" className="breadcrumb_link">
-              Sản phẩm
             </Link>
             <span className="breadcrumb_separator"> / </span>
             <Link to="/cart" className="breadcrumb_link">
@@ -90,186 +242,373 @@ const CheckOut = () => {
       {/* Checkout Content */}
       <section className="section">
         <div className="container">
-          <div className="checkout_wrapper">
+          <h2 style={{ fontSize: '2.4rem', marginBottom: '30px', fontWeight: 'bold' }}>
+            Thanh toán
+          </h2>
+          
+          {error && (
+            <div style={{ 
+              color: '#d32f2f', 
+              marginBottom: '20px', 
+              padding: '15px 20px', 
+              backgroundColor: '#ffebee', 
+              border: '1px solid #ef5350',
+              borderRadius: '8px',
+              fontSize: '1.4rem'
+            }}>
+              <strong>⚠️ Lỗi:</strong> {error}
+            </div>
+          )}
+          
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: '1fr 1fr', 
+            gap: '30px',
+            '@media (max-width: 768px)': {
+              gridTemplateColumns: '1fr'
+            }
+          }}>
             {/* Left Column - Billing Details */}
-            <div className="checkout_billing">
-              <h2 className="checkout_title">Thông tin thanh toán</h2>
-              <form className="checkout_form" onSubmit={handleSubmit}>
-                <div className="checkout_form_group">
-                  <label className="checkout_label">
-                    Họ và tên <span className="checkout_required">*</span>
+            <div style={{
+              backgroundColor: '#fff',
+              padding: '30px',
+              borderRadius: '8px',
+              border: '1px solid #e0e0e0',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+            }}>
+              <h3 style={{ fontSize: '2rem', marginBottom: '25px', fontWeight: 'bold' }}>
+                Thông tin giao hàng
+              </h3>
+              <form onSubmit={handleSubmit}>
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '8px', 
+                    fontSize: '1.4rem',
+                    fontWeight: '500'
+                  }}>
+                    Tên khách hàng <span style={{ color: '#d32f2f' }}>*</span>
                   </label>
                   <input
                     type="text"
-                    className="checkout_input"
-                    name="firstName"
-                    value={formData.firstName}
+                    name="name_customer"
+                    value={formData.name_customer}
                     onChange={handleInputChange}
+                    placeholder="Nhập tên khách hàng"
                     required
+                    style={{
+                      width: '100%',
+                      padding: '12px 15px',
+                      fontSize: '1.4rem',
+                      border: '1px solid #e0e0e0',
+                      borderRadius: '5px',
+                      outline: 'none',
+                      transition: 'border-color 0.3s'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#1976d2'}
+                    onBlur={(e) => e.target.style.borderColor = '#e0e0e0'}
                   />
                 </div>
 
-                <div className="checkout_form_group">
-                  <label className="checkout_label">Tên công ty</label>
-                  <input
-                    type="text"
-                    className="checkout_input"
-                    name="companyName"
-                    value={formData.companyName}
-                    onChange={handleInputChange}
-                  />
-                </div>
-
-                <div className="checkout_form_group">
-                  <label className="checkout_label">
-                    Địa chỉ <span className="checkout_required">*</span>
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '8px', 
+                    fontSize: '1.4rem',
+                    fontWeight: '500'
+                  }}>
+                    Địa chỉ giao hàng <span style={{ color: '#d32f2f' }}>*</span>
                   </label>
                   <input
                     type="text"
-                    className="checkout_input"
-                    name="streetAddress"
-                    value={formData.streetAddress}
+                    name="address_customer"
+                    value={formData.address_customer}
                     onChange={handleInputChange}
+                    placeholder="Nhập địa chỉ giao hàng"
                     required
+                    style={{
+                      width: '100%',
+                      padding: '12px 15px',
+                      fontSize: '1.4rem',
+                      border: '1px solid #e0e0e0',
+                      borderRadius: '5px',
+                      outline: 'none',
+                      transition: 'border-color 0.3s'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#1976d2'}
+                    onBlur={(e) => e.target.style.borderColor = '#e0e0e0'}
                   />
                 </div>
 
-                <div className="checkout_form_group">
-                  <label className="checkout_label">
-                    Căn hộ, tầng, v.v. (tùy chọn)
-                  </label>
-                  <input
-                    type="text"
-                    className="checkout_input"
-                    name="apartment"
-                    value={formData.apartment}
-                    onChange={handleInputChange}
-                  />
-                </div>
-
-                <div className="checkout_form_group">
-                  <label className="checkout_label">
-                    Thành phố/Tỉnh <span className="checkout_required">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    className="checkout_input"
-                    name="townCity"
-                    value={formData.townCity}
-                    onChange={handleInputChange}
-                    required
-                  />
-                </div>
-
-                <div className="checkout_form_group">
-                  <label className="checkout_label">
-                    Số điện thoại <span className="checkout_required">*</span>
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '8px', 
+                    fontSize: '1.4rem',
+                    fontWeight: '500'
+                  }}>
+                    Số điện thoại <span style={{ color: '#d32f2f' }}>*</span>
                   </label>
                   <input
                     type="tel"
-                    className="checkout_input"
-                    name="phoneNumber"
-                    value={formData.phoneNumber}
+                    name="phone_customer"
+                    value={formData.phone_customer}
                     onChange={handleInputChange}
+                    placeholder="Nhập số điện thoại"
                     required
+                    style={{
+                      width: '100%',
+                      padding: '12px 15px',
+                      fontSize: '1.4rem',
+                      border: '1px solid #e0e0e0',
+                      borderRadius: '5px',
+                      outline: 'none',
+                      transition: 'border-color 0.3s'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#1976d2'}
+                    onBlur={(e) => e.target.style.borderColor = '#e0e0e0'}
                   />
                 </div>
 
-                <div className="checkout_form_group">
-                  <label className="checkout_label">
-                    Email <span className="checkout_required">*</span>
+                <div style={{ marginBottom: '25px' }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '8px', 
+                    fontSize: '1.4rem',
+                    fontWeight: '500'
+                  }}>
+                    Ghi chú
                   </label>
-                  <input
-                    type="email"
-                    className="checkout_input"
-                    name="emailAddress"
-                    value={formData.emailAddress}
+                  <textarea
+                    name="note"
+                    value={formData.note}
                     onChange={handleInputChange}
-                    required
+                    placeholder="Ghi chú cho đơn hàng (tùy chọn)"
+                    rows="4"
+                    style={{
+                      width: '100%',
+                      padding: '12px 15px',
+                      fontSize: '1.4rem',
+                      border: '1px solid #e0e0e0',
+                      borderRadius: '5px',
+                      outline: 'none',
+                      resize: 'vertical',
+                      fontFamily: 'inherit',
+                      transition: 'border-color 0.3s'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#1976d2'}
+                    onBlur={(e) => e.target.style.borderColor = '#e0e0e0'}
                   />
                 </div>
 
-                <div className="checkout_form_group checkout_checkbox_group">
-                  <label className="checkout_checkbox_label">
-                    <input
-                      type="checkbox"
-                      className="checkout_checkbox"
-                      name="saveInfo"
-                      checked={formData.saveInfo}
-                      onChange={handleInputChange}
-                    />
-                    <span>Lưu thông tin này để thanh toán nhanh hơn lần sau</span>
-                  </label>
-                </div>
+                {/* Submit Button */}
+                <button
+                  type="submit"
+                  disabled={submitting || orderItems.length === 0}
+                  style={{
+                    width: '100%',
+                    padding: '15px',
+                    fontSize: '1.6rem',
+                    fontWeight: 'bold',
+                    color: 'white',
+                    backgroundColor: orderItems.length === 0 ? '#ccc' : '#1976d2',
+                    border: 'none',
+                    borderRadius: '5px',
+                    cursor: orderItems.length === 0 ? 'not-allowed' : 'pointer',
+                    transition: 'background-color 0.3s'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (orderItems.length > 0 && !submitting) {
+                      e.target.style.backgroundColor = '#1565c0'
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (orderItems.length > 0) {
+                      e.target.style.backgroundColor = '#1976d2'
+                    }
+                  }}
+                >
+                  {submitting ? 'Đang xử lý...' : 'Đặt hàng'}
+                </button>
               </form>
             </div>
 
             {/* Right Column - Order Summary */}
-            <div className="checkout_summary">
-              <h2 className="checkout_title">Tóm tắt đơn hàng</h2>
+            <div style={{
+              backgroundColor: '#fff',
+              padding: '30px',
+              borderRadius: '8px',
+              border: '1px solid #e0e0e0',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+              height: 'fit-content',
+              position: 'sticky',
+              top: '20px'
+            }}>
+              <h3 style={{ fontSize: '2rem', marginBottom: '25px', fontWeight: 'bold' }}>
+                Tóm tắt đơn hàng
+              </h3>
 
               {/* Order Items */}
-              <div className="checkout_order_items">
-                {orderItems.map((item) => (
-                  <div key={item.id} className="checkout_order_item">
-                    <img
-                      src={item.image}
-                      alt={item.name}
-                      className="checkout_item_img"
-                    />
-                    <div className="checkout_item_info">
-                      <p className="checkout_item_name">{item.name}</p>
-                      <p className="checkout_item_price">
-                        {formatCurrency(item.price * item.quantity)}
-                      </p>
-                    </div>
+              <div style={{ marginBottom: '25px', maxHeight: '300px', overflowY: 'auto' }}>
+                {loading ? (
+                  <div style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column',
+                    justifyContent: 'center', 
+                    alignItems: 'center', 
+                    minHeight: '200px',
+                    padding: '40px 0',
+                    gap: '15px'
+                  }}>
+                    <ClipLoader color="#1976d2" size={40} />
+                    <p style={{ fontSize: '1.4rem', color: '#666', marginTop: '10px' }}>
+                      Đang tải đơn hàng...
+                    </p>
                   </div>
-                ))}
+                ) : orderItems.length === 0 ? (
+                  <p style={{ fontSize: '1.4rem', color: '#666', textAlign: 'center', padding: '20px' }}>
+                    Giỏ hàng trống
+                  </p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                    {orderItems.map((item) => {
+                      const product = getProductInfo(item)
+                      return (
+                        <div 
+                          key={product.id} 
+                          style={{
+                            display: 'flex',
+                            gap: '15px',
+                            paddingBottom: '15px',
+                            borderBottom: '1px solid #e0e0e0'
+                          }}
+                        >
+                          {product.image ? (
+                            <img
+                              src={product.image}
+                              alt={product.name}
+                              style={{
+                                width: '80px',
+                                height: '80px',
+                                objectFit: 'cover',
+                                borderRadius: '5px'
+                              }}
+                            />
+                          ) : (
+                            <div
+                              style={{
+                                width: '80px',
+                                height: '80px',
+                                backgroundColor: '#f0f0f0',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                borderRadius: '5px',
+                                fontSize: '1.2rem',
+                                color: '#999'
+                              }}
+                            >
+                              No Image
+                            </div>
+                          )}
+                          <div style={{ flex: 1 }}>
+                            <p style={{ fontSize: '1.4rem', marginBottom: '5px', fontWeight: '500' }}>
+                              {product.name}
+                            </p>
+                            <p style={{ fontSize: '1.3rem', color: '#666' }}>
+                              Số lượng: {product.quantity}
+                            </p>
+                            <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#1976d2', marginTop: '5px' }}>
+                              {formatCurrency(product.price * product.quantity)}
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Order Totals */}
-              <div className="checkout_totals">
-                <div className="checkout_total_row">
-                  <span className="checkout_total_label">Tạm tính:</span>
-                  <span className="checkout_total_value">{formatCurrency(subtotal)}</span>
+              <div style={{ 
+                marginBottom: '25px',
+                paddingTop: '20px',
+                borderTop: '2px solid #e0e0e0'
+              }}>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  marginBottom: '10px',
+                  fontSize: '1.4rem'
+                }}>
+                  <span>Tạm tính:</span>
+                  <span>{formatCurrency(subtotal)}</span>
                 </div>
-                <div className="checkout_total_row">
-                  <span className="checkout_total_label">Phí vận chuyển:</span>
-                  <span className="checkout_total_value">Miễn phí</span>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  marginBottom: '10px',
+                  fontSize: '1.4rem'
+                }}>
+                  <span>Phí vận chuyển:</span>
+                  <span style={{ color: '#28a745' }}>Miễn phí</span>
                 </div>
-                <div className="checkout_total_row checkout_total_row--total">
-                  <span className="checkout_total_label">Tổng cộng:</span>
-                  <span className="checkout_total_value">{formatCurrency(total)}</span>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between',
+                  paddingTop: '15px',
+                  borderTop: '1px solid #e0e0e0',
+                  fontSize: '1.8rem',
+                  fontWeight: 'bold'
+                }}>
+                  <span>Tổng cộng:</span>
+                  <span style={{ color: '#1976d2' }}>{formatCurrency(total)}</span>
                 </div>
               </div>
 
               {/* Payment Options */}
-              <div className="checkout_payment">
-                <h3 className="checkout_payment_title">Phương thức thanh toán</h3>
-                <div className="checkout_payment_options">
-                  <label className="checkout_payment_option">
+              <div style={{ marginBottom: '25px' }}>
+                <h4 style={{ fontSize: '1.6rem', marginBottom: '15px', fontWeight: 'bold' }}>
+                  Phương thức thanh toán
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <label style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '10px',
+                    padding: '12px',
+                    border: '1px solid #e0e0e0',
+                    borderRadius: '5px',
+                    cursor: 'pointer',
+                    fontSize: '1.4rem'
+                  }}>
                     <input
                       type="radio"
                       name="paymentMethod"
                       value="bank"
                       checked={paymentMethod === 'bank'}
                       onChange={(e) => setPaymentMethod(e.target.value)}
+                      style={{ width: '18px', height: '18px' }}
                     />
-                    <span>Ngân hàng</span>
-                    <div className="checkout_payment_logos">
-                      <span className="payment_logo">bKash</span>
-                      <span className="payment_logo">VISA</span>
-                      <span className="payment_logo">Mastercard</span>
-                      <span className="payment_logo">Nagad</span>
-                    </div>
+                    <span>Thanh toán qua ngân hàng</span>
                   </label>
-                  <label className="checkout_payment_option">
+                  <label style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '10px',
+                    padding: '12px',
+                    border: '1px solid #e0e0e0',
+                    borderRadius: '5px',
+                    cursor: 'pointer',
+                    fontSize: '1.4rem'
+                  }}>
                     <input
                       type="radio"
                       name="paymentMethod"
                       value="cash"
                       checked={paymentMethod === 'cash'}
                       onChange={(e) => setPaymentMethod(e.target.value)}
+                      style={{ width: '18px', height: '18px' }}
                     />
                     <span>Thanh toán khi nhận hàng</span>
                   </label>
@@ -277,34 +616,43 @@ const CheckOut = () => {
               </div>
 
               {/* Coupon Section */}
-              <div className="checkout_coupon">
-                <h3 className="checkout_coupon_title">Mã giảm giá</h3>
-                <div className="checkout_coupon_form">
+              <div>
+                <h4 style={{ fontSize: '1.6rem', marginBottom: '15px', fontWeight: 'bold' }}>
+                  Mã giảm giá
+                </h4>
+                <div style={{ display: 'flex', gap: '10px' }}>
                   <input
                     type="text"
-                    className="checkout_coupon_input"
                     placeholder="Nhập mã giảm giá"
                     value={couponCode}
                     onChange={(e) => setCouponCode(e.target.value)}
+                    style={{
+                      flex: 1,
+                      padding: '12px 15px',
+                      fontSize: '1.4rem',
+                      border: '1px solid #e0e0e0',
+                      borderRadius: '5px',
+                      outline: 'none'
+                    }}
                   />
                   <button
                     type="button"
-                    className="checkout_coupon_btn"
                     onClick={handleApplyCoupon}
+                    style={{
+                      padding: '12px 20px',
+                      fontSize: '1.4rem',
+                      backgroundColor: '#1976d2',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '5px',
+                      cursor: 'pointer',
+                      fontWeight: '500'
+                    }}
                   >
-                    Áp dụng mã
+                    Áp dụng
                   </button>
                 </div>
               </div>
-
-              {/* Place Order Button */}
-              <button
-                type="submit"
-                className="checkout_place_order_btn"
-                onClick={handleSubmit}
-              >
-                Đặt hàng
-              </button>
             </div>
           </div>
         </div>
@@ -314,4 +662,3 @@ const CheckOut = () => {
 }
 
 export default CheckOut
-

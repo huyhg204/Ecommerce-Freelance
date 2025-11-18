@@ -1,22 +1,11 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import { ClipLoader } from 'react-spinners'
 import { Swiper, SwiperSlide } from 'swiper/react'
 import { Autoplay, Pagination } from 'swiper/modules'
 import 'swiper/css'
 import 'swiper/css/pagination'
-
-const sidebarCategories = [
-  { id: 1, label: 'Gaming', href: '/products?category=Gaming' },
-  { id: 2, label: 'Smartphone', href: '/products?category=Smartphone' },
-  { id: 3, label: 'Laptop', href: '/products?category=Laptop' },
-  { id: 4, label: 'Audio', href: '/products?category=Audio' },
-  { id: 5, label: 'Camera', href: '/products?category=Camera' },
-  { id: 6, label: 'Monitor', href: '/products?category=Monitor' },
-  { id: 7, label: 'Tablet', href: '/products?category=Tablet' },
-  { id: 8, label: 'Wearable', href: '/products?category=Wearable' },
-  { id: 9, label: 'PC Parts', href: '/products?category=PC Parts' },
-  { id: 10, label: 'Accessories', href: '/products?category=Accessories' },
-]
+import { axiosInstance } from '../utils/axiosConfig'
 
 const heroSlides = [
   {
@@ -46,20 +35,69 @@ const heroSlides = [
 ]
 
 const Header = () => {
+  const [categories, setCategories] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetchCategories()
+  }, [])
+
+  const fetchCategories = async () => {
+    try {
+      setLoading(true)
+      const response = await axiosInstance.get('/categories')
+      if (response.data.status === 'success') {
+        const data = response.data.data
+        const categoriesList = Array.isArray(data) ? data : (data?.categories || [])
+        // Chỉ lấy danh mục đang hoạt động (status_category === 0)
+        const activeCategories = categoriesList.filter(category => category.status_category === 0)
+        setCategories(activeCategories)
+      } else {
+        setCategories([])
+      }
+    } catch (error) {
+      console.error('Lỗi khi lấy danh mục:', error)
+      setCategories([])
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <header className="header">
       <div className="container header_container">
         <aside className="header_filter">
-          <ul className="header_filter_list">
-            {sidebarCategories.map((category) => (
-              <li key={category.id} className="header_filter_item">
-                <Link to={category.href} className="header_filter_link">
-                  {category.label}
-                </Link>
+          {loading ? (
+            <ul className="header_filter_list">
+              <li className="header_filter_item" style={{ 
+                display: 'flex', 
+                flexDirection: 'column',
+                justifyContent: 'center', 
+                alignItems: 'center',
+                padding: '20px',
+                gap: '10px'
+              }}>
+                <ClipLoader color="#1976d2" size={20} />
+                <span style={{ fontSize: '1.2rem', color: '#666' }}>Đang tải...</span>
               </li>
-            ))}
-          </ul>
+            </ul>
+          ) : (
+            <ul className="header_filter_list">
+              {categories.map((category) => {
+                const categoryName = category.name_category || category.name || ''
+                return (
+                  <li key={category.id} className="header_filter_item">
+                    <Link 
+                      to={`/products?category=${encodeURIComponent(categoryName)}`} 
+                      className="header_filter_link"
+                    >
+                      {categoryName}
+                    </Link>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
         </aside>
         <div className="hero_slider">
           <Swiper

@@ -1,80 +1,76 @@
-import React from 'react'
-import { Link } from 'react-router-dom'
+import React, { useState, useEffect } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
+import { ClipLoader } from 'react-spinners'
 import { FaHeart, FaEye, FaStar } from 'react-icons/fa'
 import { formatCurrency } from '../utils/formatCurrency'
-
-const exploreProducts = [
-  {
-    id: 1,
-    title: 'Tablet iPad Pro 12.9 inch',
-    price: 100,
-    reviews: 24,
-    image:
-      'https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=600&q=80',
-    badge: 'Mới',
-    hasCTA: true,
-  },
-  {
-    id: 2,
-    title: 'Máy ảnh Canon EOS DSLR',
-    price: 360,
-    reviews: 65,
-    image:
-      'https://images.unsplash.com/photo-1519183071298-a2962be90b8e?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    id: 3,
-    title: 'Laptop Gaming ASUS ROG',
-    price: 1160,
-    reviews: 40,
-    image:
-      'https://images.unsplash.com/photo-1510511459019-5dda7724fd87?auto=format&fit=crop&w=600&q=80',
-    badge: 'Hot',
-  },
-  {
-    id: 4,
-    title: 'Smartwatch Apple Watch',
-    price: 80,
-    reviews: 48,
-    image:
-      'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    id: 5,
-    title: 'Điện thoại Samsung Galaxy',
-    price: 960,
-    reviews: 12,
-    image:
-      'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    id: 6,
-    title: 'Webcam Logitech 4K',
-    price: 116,
-    reviews: 32,
-    image:
-      'https://images.unsplash.com/photo-1587825140708-dfaf72ae4b04?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    id: 7,
-    title: 'Tay cầm Gaming Xbox',
-    price: 660,
-    reviews: 58,
-    image:
-      'https://images.unsplash.com/photo-1614680376573-e720cdb88866?auto=format&fit=crop&w=600&q=80',
-    hasCTA: true,
-  },
-  {
-    id: 8,
-    title: 'Loa Bluetooth Sony',
-    price: 780,
-    reviews: 22,
-    image:
-      'https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?auto=format&fit=crop&w=600&q=80',
-  },
-]
+import { axiosInstance } from '../utils/axiosConfig'
+import { cartService } from '../utils/cartService'
+import { authService } from '../utils/authService'
 
 const ProductsExploreOur = () => {
+  const navigate = useNavigate();
+  const [products, setProducts] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    fetchProducts()
+  }, [])
+
+  const fetchProducts = async () => {
+    try {
+      setLoading(true)
+      const response = await axiosInstance.get('/products')
+      if (response.data.status === 'success') {
+        const data = response.data.data
+        const productsList = Array.isArray(data) ? data : (data?.products || [])
+        // Chỉ lấy sản phẩm đang hoạt động (status_product === 0)
+        const activeProducts = productsList.filter(product => product.status_product === 0)
+        // Lấy 8 sản phẩm đầu tiên
+        setProducts(activeProducts.slice(0, 8).map(product => ({
+          id: product.id,
+          title: product.name_product,
+          price: product.price_product || 0,
+          image: product.image_product || '',
+          reviews: product.reviews_count || 0,
+          badge: product.badge || '',
+        })))
+      } else {
+        setProducts([])
+      }
+    } catch (error) {
+      console.error('Lỗi khi lấy sản phẩm:', error)
+      setError('Không thể tải sản phẩm. Vui lòng thử lại sau.')
+      setProducts([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleAddToCart = async (productId, e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    if (!authService.isAuthenticated()) {
+      if (window.confirm('Bạn cần đăng nhập để thêm vào giỏ hàng. Đi đến trang đăng nhập?')) {
+        navigate('/login')
+      }
+      return
+    }
+
+    try {
+      await cartService.addToCart(productId, 1)
+      toast.success('Đã thêm vào giỏ hàng!', {
+        description: 'Sản phẩm đã được thêm vào giỏ hàng.',
+      })
+    } catch (error) {
+      toast.error('Không thể thêm vào giỏ hàng', {
+        description: error.message || 'Vui lòng thử lại sau.',
+      })
+    }
+  }
+
   return (
     <section className="section">
       <div className="container">
@@ -92,44 +88,82 @@ const ProductsExploreOur = () => {
             </button>
           </div>
         </div>
-        <div className="products">
-          {exploreProducts.map((product) => (
-            <div key={product.id} className="card">
-              <div className="card_top">
-                <img src={product.image} alt={product.title} className="card_img" />
-                {product.badge && <div className="card_tag">{product.badge}</div>}
-                <div className="card_top_icons">
-                  <FaHeart className="card_top_icon" />
-                  <FaEye className="card_top_icon" />
-                </div>
-              </div>
-              <div className="card_body">
-                <Link to={`/products/${product.id}`} className="card_title_link">
-                  <h3 className="card_title">{product.title}</h3>
-                </Link>
-                <p className="card_price">{formatCurrency(product.price)}</p>
-                <div className="card_ratings">
-                  <div className="card_stars">
-                    <FaStar className="w-6 h-6" />
-                    <FaStar className="w-6 h-6" />
-                    <FaStar className="w-6 h-6" />
-                    <FaStar className="w-6 h-6" />
-                    <FaStar className="w-6 h-6" />
+        {loading ? (
+          <div style={{ 
+            display: 'flex', 
+            flexDirection: 'column',
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            minHeight: '300px',
+            padding: '40px 0',
+            gap: '15px'
+          }}>
+            <ClipLoader color="#1976d2" size={40} />
+            <p style={{ fontSize: '1.4rem', color: '#666' }}>
+              Đang tải sản phẩm...
+            </p>
+          </div>
+        ) : error ? (
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            minHeight: '300px',
+            padding: '40px 0'
+          }}>
+            <p style={{ color: 'red' }}>{error}</p>
+          </div>
+        ) : products.length === 0 ? null : (
+          <>
+            <div className="products">
+              {products.map((product) => (
+                <div key={product.id} className="card">
+                  <div className="card_top">
+                    {product.image ? (
+                      <img src={product.image} alt={product.title} className="card_img" />
+                    ) : (
+                      <div className="card_img" style={{ backgroundColor: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '200px' }}>
+                        <span>No Image</span>
+                      </div>
+                    )}
+                    {product.badge && <div className="card_tag">{product.badge}</div>}
+                    <div className="card_top_icons">
+                      <FaHeart className="card_top_icon" />
+                      <FaEye className="card_top_icon" />
+                    </div>
                   </div>
-                  <p className="card_rating_numbers">({product.reviews})</p>
+                  <div className="card_body">
+                    <Link to={`/products/${product.id}`} className="card_title_link">
+                      <h3 className="card_title">{product.title}</h3>
+                    </Link>
+                    <p className="card_price">{formatCurrency(product.price)}</p>
+                    <div className="card_ratings">
+                      <div className="card_stars">
+                        <FaStar className="w-6 h-6" />
+                        <FaStar className="w-6 h-6" />
+                        <FaStar className="w-6 h-6" />
+                        <FaStar className="w-6 h-6" />
+                        <FaStar className="w-6 h-6" />
+                      </div>
+                      <p className="card_rating_numbers">({product.reviews})</p>
+                    </div>
+                    <button 
+                      className="add_to_cart add_to_cart--inline"
+                      onClick={(e) => handleAddToCart(product.id, e)}
+                    >
+                      Thêm vào giỏ
+                    </button>
+                  </div>
                 </div>
-                {product.hasCTA && (
-                  <button className="add_to_cart add_to_cart--inline">Thêm vào giỏ</button>
-                )}
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
-        <div className="container_btn">
-          <Link to="/collections/all" className="container_btn_a">
-            XEM TOÀN BỘ
-          </Link>
-        </div>
+            <div className="container_btn">
+              <Link to="/collections/all" className="container_btn_a">
+                XEM TOÀN BỘ
+              </Link>
+            </div>
+          </>
+        )}
       </div>
     </section>
   )
