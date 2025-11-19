@@ -9,7 +9,7 @@ import { authService } from '../utils/authService'
 
 const Orders = () => {
   const navigate = useNavigate()
-  const location = useLocation()
+  const { pathname } = useLocation()
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -268,7 +268,7 @@ const Orders = () => {
                   <li className="profile_sidebar_item">
                     <Link 
                       to="/profile" 
-                      className={`profile_sidebar_link ${location.pathname === '/profile' ? 'active' : ''}`}
+                      className={`profile_sidebar_link ${pathname === '/profile' ? 'active' : ''}`}
                     >
                       Thông tin tài khoản
                     </Link>
@@ -276,7 +276,7 @@ const Orders = () => {
                   <li className="profile_sidebar_item">
                     <Link 
                       to="/profile/address" 
-                      className={`profile_sidebar_link ${location.pathname === '/profile/address' ? 'active' : ''}`}
+                      className={`profile_sidebar_link ${pathname === '/profile/address' ? 'active' : ''}`}
                     >
                       Address Book
                     </Link>
@@ -284,7 +284,7 @@ const Orders = () => {
                   <li className="profile_sidebar_item">
                     <Link 
                       to="/profile/payment" 
-                      className={`profile_sidebar_link ${location.pathname === '/profile/payment' ? 'active' : ''}`}
+                      className={`profile_sidebar_link ${pathname === '/profile/payment' ? 'active' : ''}`}
                     >
                       My Payment Options
                     </Link>
@@ -298,7 +298,7 @@ const Orders = () => {
                   <li className="profile_sidebar_item">
                     <Link 
                       to="/orders" 
-                      className={`profile_sidebar_link ${location.pathname === '/orders' || location.pathname.startsWith('/orders/') ? 'active' : ''}`}
+                      className={`profile_sidebar_link ${pathname === '/orders' || pathname.startsWith('/orders/') ? 'active' : ''}`}
                     >
                       Đơn hàng của tôi
                     </Link>
@@ -306,7 +306,7 @@ const Orders = () => {
                   <li className="profile_sidebar_item">
                     <Link 
                       to="/profile/returns" 
-                      className={`profile_sidebar_link ${location.pathname === '/profile/returns' ? 'active' : ''}`}
+                      className={`profile_sidebar_link ${pathname === '/profile/returns' ? 'active' : ''}`}
                     >
                       My Returns
                     </Link>
@@ -314,7 +314,7 @@ const Orders = () => {
                   <li className="profile_sidebar_item">
                     <Link 
                       to="/profile/cancellations" 
-                      className={`profile_sidebar_link ${location.pathname === '/profile/cancellations' ? 'active' : ''}`}
+                      className={`profile_sidebar_link ${pathname === '/profile/cancellations' ? 'active' : ''}`}
                     >
                       My Cancellations
                     </Link>
@@ -328,7 +328,7 @@ const Orders = () => {
                   <li className="profile_sidebar_item">
                     <Link 
                       to="/wishlist" 
-                      className={`profile_sidebar_link ${location.pathname === '/wishlist' ? 'active' : ''}`}
+                      className={`profile_sidebar_link ${pathname === '/wishlist' ? 'active' : ''}`}
                     >
                       Danh sách yêu thích
                     </Link>

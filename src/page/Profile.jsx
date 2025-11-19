@@ -7,7 +7,7 @@ import { authService } from '../utils/authService'
 
 const Profile = () => {
   const navigate = useNavigate()
-  const location = useLocation()
+  const { pathname } = useLocation()
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -286,19 +286,19 @@ const Profile = () => {
       id: 'profile',
       label: 'Thông tin tài khoản',
       href: '/profile',
-      active: location.pathname === '/profile',
+      active: pathname === '/profile',
     },
     {
       id: 'address',
       label: 'Address Book',
       href: '/profile/address',
-      active: location.pathname === '/profile/address',
+      active: pathname === '/profile/address',
     },
     {
       id: 'payment',
       label: 'My Payment Options',
       href: '/profile/payment',
-      active: location.pathname === '/profile/payment',
+      active: pathname === '/profile/payment',
     },
   ]
 
@@ -307,19 +307,19 @@ const Profile = () => {
       id: 'orders',
       label: 'Đơn hàng của tôi',
       href: '/orders',
-      active: location.pathname === '/orders' || location.pathname.startsWith('/orders/'),
+      active: pathname === '/orders' || pathname.startsWith('/orders/'),
     },
     {
       id: 'returns',
       label: 'My Returns',
       href: '/profile/returns',
-      active: location.pathname === '/profile/returns',
+      active: pathname === '/profile/returns',
     },
     {
       id: 'cancellations',
       label: 'My Cancellations',
       href: '/profile/cancellations',
-      active: location.pathname === '/profile/cancellations',
+      active: pathname === '/profile/cancellations',
     },
   ]
 
@@ -382,7 +382,7 @@ const Profile = () => {
                   <li className="profile_sidebar_item">
                     <Link 
                       to="/wishlist" 
-                      className={`profile_sidebar_link ${location.pathname === '/wishlist' ? 'active' : ''}`}
+                      className={`profile_sidebar_link ${pathname === '/wishlist' ? 'active' : ''}`}
                     >
                       Danh sách yêu thích
                     </Link>
