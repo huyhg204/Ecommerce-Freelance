@@ -69,10 +69,12 @@ const CheckOut = () => {
     }
     // Pre-fill thông tin user nếu có
     const user = authService.getUser()
-    if (user && user.name) {
+    if (user && user.name && user.address && user.phone) {
       setFormData(prev => ({
         ...prev,
-        name_customer: user.name
+        name_customer: user.name,
+        address_customer: user.address,
+        phone_customer: user.phone,
       }))
     }
     fetchCart()

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { ClipLoader } from 'react-spinners'
 import { toast } from 'sonner'
 import { formatCurrency } from '../utils/formatCurrency'
@@ -8,6 +8,7 @@ import { authService } from '../utils/authService'
 
 const OrderDetail = () => {
   const navigate = useNavigate()
+  const location = useLocation()
   const { id } = useParams()
   const [order, setOrder] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -412,8 +413,27 @@ const OrderDetail = () => {
                 <h3 className="profile_sidebar_title">Quản lý tài khoản</h3>
                 <ul className="profile_sidebar_list">
                   <li className="profile_sidebar_item">
-                    <Link to="/profile" className="profile_sidebar_link">
+                    <Link 
+                      to="/profile" 
+                      className={`profile_sidebar_link ${location.pathname === '/profile' ? 'active' : ''}`}
+                    >
                       Thông tin tài khoản
+                    </Link>
+                  </li>
+                  <li className="profile_sidebar_item">
+                    <Link 
+                      to="/profile/address" 
+                      className={`profile_sidebar_link ${location.pathname === '/profile/address' ? 'active' : ''}`}
+                    >
+                      Address Book
+                    </Link>
+                  </li>
+                  <li className="profile_sidebar_item">
+                    <Link 
+                      to="/profile/payment" 
+                      className={`profile_sidebar_link ${location.pathname === '/profile/payment' ? 'active' : ''}`}
+                    >
+                      My Payment Options
                     </Link>
                   </li>
                 </ul>
@@ -423,8 +443,27 @@ const OrderDetail = () => {
                 <h3 className="profile_sidebar_title">Đơn hàng của tôi</h3>
                 <ul className="profile_sidebar_list">
                   <li className="profile_sidebar_item">
-                    <Link to="/orders" className="profile_sidebar_link active">
+                    <Link 
+                      to="/orders" 
+                      className={`profile_sidebar_link ${location.pathname === '/orders' || location.pathname.startsWith('/orders/') ? 'active' : ''}`}
+                    >
                       Đơn hàng của tôi
+                    </Link>
+                  </li>
+                  <li className="profile_sidebar_item">
+                    <Link 
+                      to="/profile/returns" 
+                      className={`profile_sidebar_link ${location.pathname === '/profile/returns' ? 'active' : ''}`}
+                    >
+                      My Returns
+                    </Link>
+                  </li>
+                  <li className="profile_sidebar_item">
+                    <Link 
+                      to="/profile/cancellations" 
+                      className={`profile_sidebar_link ${location.pathname === '/profile/cancellations' ? 'active' : ''}`}
+                    >
+                      My Cancellations
                     </Link>
                   </li>
                 </ul>
@@ -434,7 +473,10 @@ const OrderDetail = () => {
                 <h3 className="profile_sidebar_title">Danh sách yêu thích</h3>
                 <ul className="profile_sidebar_list">
                   <li className="profile_sidebar_item">
-                    <Link to="/wishlist" className="profile_sidebar_link">
+                    <Link 
+                      to="/wishlist" 
+                      className={`profile_sidebar_link ${location.pathname === '/wishlist' ? 'active' : ''}`}
+                    >
                       Danh sách yêu thích
                     </Link>
                   </li>
